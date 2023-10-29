@@ -3,37 +3,91 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\Controller; // Make sure to import the Controller class
 
 class FileUploadController extends Controller
 {
-    public function checkFileIsAllowed(Request $request)
+    public function stringIsAValidUrl($s)
+    {
+        return filter_var($s, FILTER_VALIDATE_URL) !== false;
+    }
+
+    public function downloadFile($givenURL)
+    {
+        $fileContent = Http::get($givenURL)->body();
+        $fileName = basename(parse_url($givenURL, PHP_URL_PATH));
+        file_put_contents(public_path("processedFiles/{$fileName}"), $fileContent);
+        return [
+            'buffer' => $fileContent,
+            'originalname' => $fileName,
+        ];
+    }
+
+    public function getFileSize($res)
+    {
+        $size = $res->header('content-length');
+        return $size;
+    }
+
+    public function generateFilesArray($files)
+    {
+        $filesArray = [];
+        foreach ($files as $file) {
+            $currentFile = $this->downloadFile($file);
+            $filesArray[] = $currentFile;
+        }
+        return $filesArray;
+    }
+
+    public function fileIsAllowed(Request $request)
     {
         try {
-            $maxSizeInMb = (int)$request->input('maxSizeInMb');
-            $maxSizeInBytes = $maxSizeInMb * 1024 * 1024;
+            $maxSizeInMb = (int) $request->input('maxSizeInMb');
+            $maxSizeinBytes = $maxSizeInMb * 1024 * 1024;
             $formatsAllow = array_map('strtolower', $request->input('formatsAllow'));
-            $fileURL = $request->input('url');
 
-            // Validate the URL
-            if (!filter_var($fileURL, FILTER_VALIDATE_URL)) {
+            $fileURL = $request->input('url');
+            if (!$this->stringIsAValidUrl($fileURL)) {
                 return response()->json([
                     'isSuccess' => false,
                     'error' => [
                         'messageEN' => 'Invalid Value, Please attach a file',
                         'messageAR' => 'المدخل غير صحيح, الرجاء إرفاق ملف',
                     ],
-                ], 200);
+                ]);
+            }
+            $fileRes = Http::get($fileURL);
+
+            $fileFormat = pathinfo(parse_url($fileURL, PHP_URL_PATH), PATHINFO_EXTENSION);
+            $fileFormat = $fileFormat ? strtolower($fileFormat) : $fileFormat;
+            $formatIsAllowed = in_array($fileFormat, $formatsAllow);
+            if (!$formatIsAllowed) {
+                return response()->json([
+                    'isSuccess' => false,
+                    'error' => [
+                        'messageEN' => 'File format is not allowed',
+                        'messageAR' => 'نوع الملف غير مسموح به',
+                    ],
+                ]);
             }
 
-            // Fetch the file and perform validation
-            $fileRes = Http::get($fileURL);
-            // ... Implement file format and size validation as in your Node.js code ...
+            $fileSize = $this->getFileSize($fileRes);
+            if ($fileSize > $maxSizeinBytes) {
+                return response()->json([
+                    'isSuccess' => false,
+                    'error' => [
+                        'messageEN' => 'File size is too large',
+                        'messageAR' => 'حجم الملف كبير جدا',
+                    ],
+                ]);
+            }
 
             return response()->json([
                 'isSuccess' => true,
                 'error' => null,
-            ], 200);
+            ]);
         } catch (\Exception $error) {
             return response()->json([
                 'isSuccess' => false,
@@ -41,7 +95,7 @@ class FileUploadController extends Controller
                     'messageEN' => 'Something went wrong',
                     'messageAR' => 'حدث خطأ ما',
                 ],
-            ], 200);
+            ]);
         }
     }
 
@@ -49,190 +103,122 @@ class FileUploadController extends Controller
     {
         try {
             $token = $request->input('token');
-            $segmentId = $request->input('segmentId');
-            $memberCode = $request->input('memberCode');
-            $memberNameEn = $request->input('memberNameEn');
-            $memberNameAr = $request->input('memberNameAr');
-            $productValue = $request->input('productValue');
-            $reasonCode = $request->input('reasonCode');
-            $reasonEn = $request->input('reasonEn');
-            $reasonAr = $request->input('reasonAr');
-            $fieldCode = $request->input('fieldCode');
-            $correctedValue = $request->input('correctedValue');
-            $disputeDescription = $request->input('disputeDescription');
+            $segmentId = (string) $request->input('segmentId');
+            $memberCode = (string) $request->input('memberCode');
+            $memberNameEn = (string) $request->input('memberNameEn');
+            $memberNameAr = (string) $request->input('memberNameAr');
+            $productValue = (string) $request->input('productValue');
+            $reasonCode = (string) $request->input('reasonCode');
+            $reasonEn = (string) $request->input('reasonEn');
+            $reasonAr = (string) $request->input('reasonAr');
+            $fieldCode = (string) $request->input('fieldCode');
+            $correctedValue = (string) $request->input('correctedValue');
+            $disputeDescription = (string) $request->input('disputeDescription');
             $attachCodes = $request->input('attachCodes');
             $attachments = $request->input('attachments');
-            $customerTypeId = $request->input('customerTypeId');
-            $canConfirm = $request->input('canConfirm');
+
+            $customerTypeId = (string) $request->input('customerTypeId');
+            $canConfirm = (string) $request->input('canConfirm');
             $dataTypeId = $request->input('dataTypeId');
-            $isNotify = $request->input('isNotify');
-            $notifyMemberCode = $request->input('notifyMemberCode');
+            $isNotify = (string) $request->input('isNotify');
+            $notifyMemberCode = (string) $request->input('notifyMemberCode');
             $BeneficiaryTypeId = $request->input('BeneficiaryTypeId');
 
-            // Generate the array of files
             $filesArray = $this->generateFilesArray($attachments);
-
             $molimBaseURL = "https://molimqapi.simah.com";
             $saveDisputeURL = "{$molimBaseURL}/api/v1/dispute/Save";
+            $formData = new FormData();
+            $formData->append('segmentId', $segmentId);
+            $formData->append('memberCode', $memberCode);
+            $formData->append('memberNameEn', $memberNameEn);
+            $formData->append('memberNameAr', $memberNameAr);
+            $formData->append('productValue', $productValue);
+            $formData->append('reasonCode', $reasonCode);
+            $formData->append('reasonEn', $reasonEn);
+            $formData->append('reasonAr', $reasonAr);
+            $formData->append('fieldCode', $fieldCode);
+            $formData->append('correctedValue', $correctedValue);
+            $formData->append('disputeDescription', $disputeDescription);
 
-            $formData = [
-                'segmentId' => $segmentId,
-                'memberCode' => $memberCode,
-                'memberNameEn' => $memberNameEn,
-                'memberNameAr' => $memberNameAr,
-                'productValue' => $productValue,
-                'reasonCode' => $reasonCode,
-                'reasonEn' => $reasonEn,
-                'reasonAr' => $reasonAr,
-                'fieldCode' => $fieldCode,
-                'correctedValue' => $correctedValue,
-                'disputeDescription' => $disputeDescription,
-            ];
-
-            // Append files to the form data
-            foreach ($filesArray as $index => $file) {
-                $formData["attachments[{$index}]"] = [
-                    'name' => 'attachments[]',
-                    'contents' => $file,
-                    'filename' => 'file_' . $index,
-                ];
+            foreach ($filesArray as $currentFile) {
+                $fileName = $currentFile['originalname'];
+                $fileBuffer = $currentFile['buffer'];
+                $formData->append('attachments[]', $fileBuffer, $fileName);
             }
 
-            // Append attachCodes
-            foreach ($attachCodes as $index => $code) {
-                $formData["attachCodes[{$index}]"] = $code;
+            foreach ($attachCodes as $attachCode) {
+                $formData->append('attachCodes[]', $attachCode);
             }
 
-            $formData['customerTypeId'] = $customerTypeId;
-            $formData['canConfirm'] = $canConfirm;
+            $formData->append('customerTypeId', $customerTypeId);
+            $formData->append('canConfirm', $canConfirm);
 
-            if ($dataTypeId !== null && $dataTypeId !== '') {
-                $formData['dataTypeId'] = $dataTypeId;
+            if ($dataTypeId !== null && $dataTypeId !== "") {
+                $formData->append('dataTypeId', $dataTypeId);
             }
 
-            $formData['isNotify'] = $isNotify;
-            $formData['notifyMemberCode'] = $notifyMemberCode;
+            $formData->append('isNotify', $isNotify);
+            $formData->append('notifyMemberCode', $notifyMemberCode);
 
-            if ($BeneficiaryTypeId !== null && $BeneficiaryTypeId !== '') {
-                $formData['BeneficiaryTypeId'] = $BeneficiaryTypeId;
+            if ($BeneficiaryTypeId !== null && $BeneficiaryTypeId !== "") {
+                $formData->append('BeneficiaryTypeId', $BeneficiaryTypeId);
             }
 
-            // Send the request
             $response = Http::withHeaders([
+                'Content-Type' => 'multipart/form-data',
                 'language' => 'en',
                 'appId' => '5',
-                'Authorization' => 'Bearer ' . $token,
-            ])->asForm()->post($saveDisputeURL, $formData);
+                'Authorization' => "Bearer $token",
+            ])->post($saveDisputeURL, $formData);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $error) {
             return response()->json([
-                'message' => 'Something went wrong',
-                'error' => $error->getMessage(),
+                'message' => "error is $error",
                 'body' => $request->all(),
             ], 500);
         }
     }
 
-    private function generateFilesArray($attachments)
-    {
-        $filesArray = [];
-
-        foreach ($attachments as $attachment) {
-            // Process each attachment and create an array with buffer and original name.
-            $fileBuffer = file_get_contents($attachment);
-            $originalName = pathinfo($attachment, PATHINFO_BASENAME);
-
-            $filesArray[] = $fileBuffer;
-        }
-
-        return $filesArray;
-    }
-
-
     public function submitDocuments(Request $request)
     {
         try {
-            // Access request data and files
+            $token = $request->input('token');
             $disputeId = $request->input('disputeId');
             $comment = $request->input('comment');
-            $attachments = $request->file('attachments');
+            $attachCodes = $request->input('attachCodes');
+            $attachments = $request->input('attachments');
 
-            // Process files
-            $formData = [
-                'disputeId' => $disputeId,
-                'comment' => $comment,
-            ];
+            $filesArray = $this->generateFilesArray($attachments);
+            $molimBaseURL = "https://molimqapi.simah.com";
+            $saveDisputeURL = "{$molimBaseURL}/api/v1/dispute/Submit/Document";
+            $formData = new FormData();
+            $formData->append('disputeId', $disputeId);
+            $formData->append('comment', $comment);
 
-            foreach ($attachments as $attachment) {
-                // Upload each attachment to the Molim API
-                $attachmentFileName = $attachment->getClientOriginalName();
-                $attachmentContents = file_get_contents($attachment->getRealPath());
-                $formData['attachments'][] = [
-                    'name' => 'attachments',
-                    'contents' => $attachmentContents,
-                    'filename' => $attachmentFileName,
-                ];
+            foreach ($filesArray as $currentFile) {
+                $fileName = $currentFile['originalname'];
+                $fileBuffer = $currentFile['buffer'];
+                $formData->append('attachments[]', $fileBuffer, $fileName);
             }
 
-            // Make a POST request to the Molim API using Laravel's HTTP client
+            foreach ($attachCodes as $attachCode) {
+                $formData->append('attachCodes[]', $attachCode);
+            }
+
             $response = Http::withHeaders([
                 'Content-Type' => 'multipart/form-data',
                 'language' => 'en',
                 'appId' => '5',
-            ])->attachMultipart($formData)->post('https://molimqapi.simah.com/api/v1/dispute/Submit/Document', [
-                'headers' => ['Authorization' => 'Bearer ' . $request->input('token')],
-            ]);
+                'Authorization' => "Bearer $token",
+            ])->post($saveDisputeURL, $formData);
 
-            // Process the response and return it
-            return $response->json();
-        } catch (\Exception $e) {
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $error) {
             return response()->json([
-                'isSuccess' => false,
-                'error' => [
-                    'messageEN' => 'Something went wrong',
-                    'messageAR' => 'حدث خطأ ما',
-                ],
-            ]);
+                'message' => "error is $error",
+                'body' => $request->all(),
+            ], 500);
         }
     }
-
-    
-    
-    
-    
-    private function prepareFilesArray($attachments)
-{
-    $filesArray = [];
-
-    foreach ($attachments as $attachment) {
-        $fileBuffer = file_get_contents($attachment);
-        $originalName = pathinfo($attachment, PATHINFO_BASENAME);
-
-        $filesArray[] = [
-            'buffer' => $fileBuffer,
-            'originalname' => $originalName,
-        ];
-    }
-
-    return $filesArray;
-}
-
-
-    // private function generateFilesArray($attachments)
-    // {
-    //     $filesArray = [];
-
-    //     foreach ($attachments as $attachment) {
-    //         $fileBuffer = file_get_contents($attachment);
-    //         $originalName = pathinfo($attachment, PATHINFO_BASENAME);
-
-    //         $filesArray[] = [
-    //             'buffer' => $fileBuffer,
-    //             'originalname' => $originalName,
-    //         ];
-    //     }
-
-    //     return $filesArray;
-    // }
 }

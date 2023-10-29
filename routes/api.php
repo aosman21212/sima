@@ -2,7 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\FileUploadController; // Make sure to specify the correct namespace
 
 /*
 |--------------------------------------------------------------------------
@@ -24,7 +24,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 
 Route::group(['prefix' => 'v1'], function () {
-    Route::post('fileIsAllowed', [FileUploadController::class, 'checkFileIsAllowed']);
+    Route::post('fileIsAllowed', [FileUploadController::class, 'fileIsAllowed']);
     Route::post('save-dispute', [FileUploadController::class, 'saveDispute']);
     Route::post('submit-documents', [FileUploadController::class, 'submitDocuments']);
 });
