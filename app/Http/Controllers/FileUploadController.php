@@ -3,9 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
-use App\Http\Controllers\Controller; // Make sure to import the Controller class
 
 class FileUploadController extends Controller
 {
@@ -98,10 +96,11 @@ class FileUploadController extends Controller
             ]);
         }
     }
-
+ 
     public function saveDispute(Request $request)
     {
         try {
+            // Extract data from the request
             $token = $request->input('token');
             $segmentId = (string) $request->input('segmentId');
             $memberCode = (string) $request->input('memberCode');
@@ -115,7 +114,7 @@ class FileUploadController extends Controller
             $correctedValue = (string) $request->input('correctedValue');
             $disputeDescription = (string) $request->input('disputeDescription');
             $attachCodes = $request->input('attachCodes');
-            $attachments = $request->input('attachments');
+            $attachments = $this->processAttachments($request->input('attachments')); // Process attachments
 
             $customerTypeId = (string) $request->input('customerTypeId');
             $canConfirm = (string) $request->input('canConfirm');
@@ -124,58 +123,44 @@ class FileUploadController extends Controller
             $notifyMemberCode = (string) $request->input('notifyMemberCode');
             $BeneficiaryTypeId = $request->input('BeneficiaryTypeId');
 
-            $filesArray = $this->generateFilesArray($attachments);
             $molimBaseURL = "https://molimqapi.simah.com";
             $saveDisputeURL = "{$molimBaseURL}/api/v1/dispute/Save";
-            $formData = new FormData();
-            $formData->append('segmentId', $segmentId);
-            $formData->append('memberCode', $memberCode);
-            $formData->append('memberNameEn', $memberNameEn);
-            $formData->append('memberNameAr', $memberNameAr);
-            $formData->append('productValue', $productValue);
-            $formData->append('reasonCode', $reasonCode);
-            $formData->append('reasonEn', $reasonEn);
-            $formData->append('reasonAr', $reasonAr);
-            $formData->append('fieldCode', $fieldCode);
-            $formData->append('correctedValue', $correctedValue);
-            $formData->append('disputeDescription', $disputeDescription);
+            
+            // Create form data
+            $formData = [
+                'segmentId' => $segmentId,
+                'memberCode' => $memberCode,
+                'memberNameEn' => $memberNameEn,
+                'memberNameAr' => $memberNameAr,
+                'productValue' => $productValue,
+                'reasonCode' => $reasonCode,
+                'reasonEn' => $reasonEn,
+                'reasonAr' => $reasonAr,
+                'fieldCode' => $fieldCode,
+                'correctedValue' => $correctedValue,
+                'disputeDescription' => $disputeDescription,
+                'attachments' => $attachments, // Attach processed attachments
+                'attachCodes' => $attachCodes,
+                'customerTypeId' => $customerTypeId,
+                'canConfirm' => $canConfirm,
+                'dataTypeId' => $dataTypeId !== null ? $dataTypeId : "",
+                'isNotify' => $isNotify,
+                'notifyMemberCode' => $notifyMemberCode,
+                'BeneficiaryTypeId' => $BeneficiaryTypeId !== null ? $BeneficiaryTypeId : "",
+            ];
 
-            foreach ($filesArray as $currentFile) {
-                $fileName = $currentFile['originalname'];
-                $fileBuffer = $currentFile['buffer'];
-                $formData->append('attachments[]', $fileBuffer, $fileName);
-            }
-
-            foreach ($attachCodes as $attachCode) {
-                $formData->append('attachCodes[]', $attachCode);
-            }
-
-            $formData->append('customerTypeId', $customerTypeId);
-            $formData->append('canConfirm', $canConfirm);
-
-            if ($dataTypeId !== null && $dataTypeId !== "") {
-                $formData->append('dataTypeId', $dataTypeId);
-            }
-
-            $formData->append('isNotify', $isNotify);
-            $formData->append('notifyMemberCode', $notifyMemberCode);
-
-            if ($BeneficiaryTypeId !== null && $BeneficiaryTypeId !== "") {
-                $formData->append('BeneficiaryTypeId', $BeneficiaryTypeId);
-            }
-
+            // Make the POST request with headers
             $response = Http::withHeaders([
                 'Content-Type' => 'multipart/form-data',
                 'language' => 'en',
                 'appId' => '5',
                 'Authorization' => "Bearer $token",
-            ])->post($saveDisputeURL, $formData);
+            ])->attach($formData)->post($saveDisputeURL);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $error) {
             return response()->json([
-                'message' => "error is $error",
-                'body' => $request->all(),
+                'message' => "Error: $error",
             ], 500);
         }
     }
@@ -183,42 +168,56 @@ class FileUploadController extends Controller
     public function submitDocuments(Request $request)
     {
         try {
+            // Extract data from the request
             $token = $request->input('token');
             $disputeId = $request->input('disputeId');
             $comment = $request->input('comment');
-            $attachCodes = $request->input('attachCodes');
-            $attachments = $request->input('attachments');
+            $attachments = $this->processAttachments($request->input('attachments')); // Process attachments
 
-            $filesArray = $this->generateFilesArray($attachments);
             $molimBaseURL = "https://molimqapi.simah.com";
-            $saveDisputeURL = "{$molimBaseURL}/api/v1/dispute/Submit/Document";
-            $formData = new FormData();
-            $formData->append('disputeId', $disputeId);
-            $formData->append('comment', $comment);
+            $submitDocumentURL = "{$molimBaseURL}/api/v1/dispute/Submit/Document";
 
-            foreach ($filesArray as $currentFile) {
-                $fileName = $currentFile['originalname'];
-                $fileBuffer = $currentFile['buffer'];
-                $formData->append('attachments[]', $fileBuffer, $fileName);
-            }
+            // Create form data
+            $formData = [
+                'disputeId' => $disputeId,
+                'comment' => $comment,
+                'attachments' => $attachments, // Attach processed attachments
+            ];
 
-            foreach ($attachCodes as $attachCode) {
-                $formData->append('attachCodes[]', $attachCode);
-            }
-
+            // Make the POST request with headers
             $response = Http::withHeaders([
                 'Content-Type' => 'multipart/form-data',
                 'language' => 'en',
                 'appId' => '5',
                 'Authorization' => "Bearer $token",
-            ])->post($saveDisputeURL, $formData);
+            ])->attach($formData)->post($submitDocumentURL);
 
             return response()->json($response->json(), $response->status());
         } catch (\Exception $error) {
             return response()->json([
-                'message' => "error is $error",
-                'body' => $request->all(),
+                'message' => "Error: $error",
             ], 500);
         }
     }
+
+       // Function to process attachments and return them as an array
+ // Function to process attachments and return them as an array
+// Modify the processAttachments method to prepare attachments in the expected format
+private function processAttachments($attachments)
+{
+    $filesArray = [];
+
+    foreach ($attachments as $attachment) {
+        $filesArray[] = [
+            'name' => 'attachments[]',
+            'contents' => $attachment['buffer'], // Assuming 'buffer' contains file content
+            'filename' => $attachment['originalname'], // Assuming 'originalname' contains the file name
+        ];
+    }
+
+    return $filesArray;
+}
+
+
+
 }
